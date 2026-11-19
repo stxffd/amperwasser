@@ -1,0 +1,49 @@
+name: Historie nachführen & Modell kalibrieren
+
+# Monatlich: Messwerte und Wetterarchiv der letzten Wochen in die Historie übernehmen,
+# Modell neu kalibrieren und alles committen. Der Commit hält außerdem die Zeitpläne aktiv
+# (GitHub pausiert geplante Workflows nach 60 Tagen ohne Repo-Aktivität).
+on:
+  schedule:
+    - cron: "40 2 3 * *"
+  workflow_dispatch:
+    inputs:
+      calibrate:
+        description: "Modell neu kalibrieren"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Pegel der letzten 45 Tage
+        run: node scripts/fetch-history.mjs recent --days 45
+      - name: Wetterarchiv der letzten 62 Tage
+        run: node scripts/fetch-history.mjs meteo-recent --days 62
+      - name: Tageswerte Grafrath
+        run: node scripts/fetch-history.mjs daily
+      - name: Kalibrierung
+        if: github.event_name == 'schedule' || inputs.calibrate
+        run: node scripts/calibrate.mjs
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then echo "Keine Änderungen"; exit 0; fi
+          git commit -m "Historie und Modell aktualisiert ($(date -u +%Y-%m-%d))"
+          git push
+      - name: Seite neu bauen
+        run: gh workflow run update.yml
+        env:
+          GH_TOKEN: ${{ github.token }}

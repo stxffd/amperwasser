@@ -1,0 +1,17 @@
+{
+  "name": "amperwasser",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Wasserstand und Abfluss der Amper in Grafrath – aktuell, historisch und Vorhersage",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "history:gauges": "node scripts/fetch-history.mjs gauges",
+    "history:daily": "node scripts/fetch-history.mjs daily",
+    "history:meteo": "node scripts/fetch-history.mjs meteo",
+    "history:recent": "node scripts/fetch-history.mjs recent && node scripts/fetch-history.mjs meteo-recent && node scripts/fetch-history.mjs daily",
+    "calibrate": "node scripts/calibrate.mjs",
+    "update": "node scripts/update.mjs",
+    "serve": "node scripts/serve.mjs"
+  }
+}

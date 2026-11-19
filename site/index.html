@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Amper Grafrath – Pegel & Prognose</title>
+  <meta name="description" content="Wasserstand und Abfluss der Amper in Grafrath: aktuell, historisch seit 1964 und 14-Tage-Prognose.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 20c4-4 8-4 12 0s8 4 12 0 4-2 4-2v12H2z' fill='%232a78d6'/%3E%3Cpath d='M2 13c4-4 8-4 12 0s8 4 12 0' stroke='%232a78d6' stroke-width='2.5' fill='none'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="vendor/uPlot.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wrap">
+    <header class="head">
+      <div>
+        <h1>Amper in Grafrath</h1>
+        <p class="sub" id="stand">Lade Messwerte …</p>
+      </div>
+      <a class="official" href="https://www.hnd.bayern.de/pegel/isar/grafrath-16603000" rel="noopener">Amtlicher Pegel (HND) ↗</a>
+    </header>
+
+    <p class="alert" id="alert" hidden></p>
+
+    <section class="tiles" aria-label="Aktuelle Lage">
+      <div class="tile">
+        <div class="tile-label">Abfluss</div>
+        <div class="tile-value"><span id="q-now">–</span><span class="unit">m³/s</span></div>
+        <div class="tile-sub" id="q-delta">&nbsp;</div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">Wasserstand</div>
+        <div class="tile-value"><span id="w-now">–</span><span class="unit">cm</span></div>
+        <div class="tile-sub" id="w-delta">&nbsp;</div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">Einordnung</div>
+        <div class="tile-value tile-text" id="class-label">–</div>
+        <div class="tile-sub" id="class-sub">&nbsp;</div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">Prognose 3 Tage</div>
+        <div class="tile-value tile-text" id="fc-label">–</div>
+        <div class="tile-sub" id="fc-sub">&nbsp;</div>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Verlauf">
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Messgröße">
+          <button data-param="q" aria-pressed="true">Abfluss</button>
+          <button data-param="w" aria-pressed="false">Wasserstand</button>
+        </div>
+        <div class="seg" role="group" aria-label="Zeitraum">
+          <button data-range="fc" aria-pressed="true">Prognose</button>
+          <button data-range="30" aria-pressed="false">30 Tage</button>
+          <button data-range="365" aria-pressed="false">1 Jahr</button>
+          <button data-range="all" aria-pressed="false">Seit 1964</button>
+        </div>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="chart" id="chart-main"></div>
+      <div id="precip-wrap">
+        <h2 class="chart-title">Niederschlag im Einzugsgebiet <span class="muted">mm/h</span></h2>
+        <div class="chart" id="chart-precip"></div>
+      </div>
+      <p class="hint" id="chart-hint"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="t-fc">
+      <h2 id="t-fc">Prognose nach Tagen</h2>
+      <div class="table-scroll">
+        <table class="data" id="fc-table">
+          <thead><tr><th>Tag</th><th class="num">Abfluss m³/s</th><th class="num">Spanne</th><th class="num">Wasserstand cm</th><th class="num">Spanne</th><th class="num">Niederschlag mm</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="hint">Spanne: 80 % der Ensemble-Szenarien inkl. Modellfehler liegen in diesem Bereich. Werte als Tagesmittel.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="t-up">
+      <h2 id="t-up">Oberlauf &amp; Ammersee</h2>
+      <p class="hint">Grafrath liegt 6 km unterhalb des Ammersee-Ausflusses. Der See dämpft Hochwasser der Ammer stark und verzögert sie um Tage.</p>
+      <div class="table-scroll">
+        <table class="data" id="up-table">
+          <thead><tr><th>Messstelle</th><th class="num">Aktuell</th><th class="num">24 h</th><th class="num">Stand</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <details class="panel about">
+      <summary><h2>Methode, Prognosegüte &amp; Datenquellen</h2></summary>
+      <div id="about-body">
+        <p><strong>Modell.</strong> Ein Niederschlag-Abfluss-Modell (HBV-Ansatz mit Schneeschmelze nach Höhenlage) berechnet den Zufluss der Ammer bis Weilheim und die übrigen Seezuflüsse. Eine Wasserbilanz des Ammersees mit gemessener Ausfluss-Kennlinie liefert den Abfluss bei Stegen; dazu kommen Windach und Ampermoos bis Grafrath. Jede Prognose startet an den aktuellen Messwerten (Seepegel, Ammer, Amper) und korrigiert Modellabweichungen.</p>
+        <p><strong>Unsicherheit.</strong> Das Modell wird mit allen Mitgliedern der Wetter-Ensembles <span id="about-models">ICON-D2-EPS, ICON-EU-EPS und ECMWF-ENS</span> gerechnet. Zusätzlich fließt die in Rückrechnungen gemessene Modellungenauigkeit ein.</p>
+        <p><strong>Prognosegüte</strong> (Rückrechnungen <span id="skill-period"></span> mit gemessenem Wetter, mittlere Abweichung):</p>
+        <div class="table-scroll"><table class="data" id="skill-table"><thead><tr><th>Vorlauf</th><th class="num">Modell</th><th class="num">Persistenz*</th></tr></thead><tbody></tbody></table></div>
+        <p class="hint">* „Es bleibt wie jetzt“ als Vergleich. Mit echter Wettervorhersage sind die Fehler größer, das deckt die Spanne ab.</p>
+        <p><strong>Daten.</strong> Pegeldaten: <a href="https://www.gkd.bayern.de" rel="noopener">Gewässerkundlicher Dienst Bayern</a> / <a href="https://www.hnd.bayern.de" rel="noopener">Hochwassernachrichtendienst Bayern</a>, Bayerisches Landesamt für Umwelt, CC BY 4.0. Wetter: <a href="https://open-meteo.com" rel="noopener">Open-Meteo</a> (DWD ICON, ECMWF, ERA5/Copernicus), CC BY 4.0. Rohdaten sind ungeprüft.</p>
+        <p><strong>Keine amtliche Warnung.</strong> Bei Hochwasser gelten ausschließlich die Meldungen des <a href="https://www.hnd.bayern.de" rel="noopener">Hochwassernachrichtendienstes</a>.</p>
+      </div>
+    </details>
+
+    <footer class="foot">
+      <span id="gen"></span> · <a href="https://github.com/stxffd/amperwasser" rel="noopener">Quellcode</a>
+    </footer>
+  </main>
+
+  <div class="tip" id="tip" role="status" aria-live="polite" hidden></div>
+  <script src="vendor/uPlot.iife.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
