@@ -183,3 +183,7 @@ Dies ist **keine amtliche Hochwasserwarnung**. Maßgeblich sind die Meldungen de
 Datenquellen: Bayerisches Landesamt für Umwelt, [www.lfu.bayern.de](https://www.lfu.bayern.de) (CC BY 4.0); Wetterdaten von [Open-Meteo.com](https://open-meteo.com) (CC BY 4.0) auf Basis von DWD, ECMWF und Copernicus ERA5.
 
 Diagramme: [uPlot](https://github.com/leeoniya/uPlot) (MIT).
+
+## Lizenz
+
+Der Programmcode steht unter der [MIT-Lizenz](LICENSE). Die Daten in `data/` stammen vom LfU Bayern, vom DWD und von Open-Meteo und stehen unter [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.de); Einzelheiten in [data/LICENSE.md](data/LICENSE.md).
