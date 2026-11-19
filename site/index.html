@@ -23,14 +23,14 @@
 
     <section class="tiles" aria-label="Aktuelle Lage">
       <div class="tile">
-        <div class="tile-label">Abfluss</div>
-        <div class="tile-value"><span id="q-now">–</span><span class="unit">m³/s</span></div>
-        <div class="tile-sub" id="q-delta">&nbsp;</div>
-      </div>
-      <div class="tile">
         <div class="tile-label">Wasserstand</div>
         <div class="tile-value"><span id="w-now">–</span><span class="unit">cm</span></div>
         <div class="tile-sub" id="w-delta">&nbsp;</div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">Abfluss</div>
+        <div class="tile-value"><span id="q-now">–</span><span class="unit">m³/s</span></div>
+        <div class="tile-sub" id="q-delta">&nbsp;</div>
       </div>
       <div class="tile">
         <div class="tile-label">Einordnung</div>
@@ -47,8 +47,8 @@
     <section class="panel" aria-label="Verlauf">
       <div class="controls">
         <div class="seg" role="group" aria-label="Messgröße">
-          <button data-param="q" aria-pressed="true">Abfluss</button>
-          <button data-param="w" aria-pressed="false">Wasserstand</button>
+          <button data-param="w" aria-pressed="true">Wasserstand</button>
+          <button data-param="q" aria-pressed="false">Abfluss</button>
         </div>
         <div class="seg" role="group" aria-label="Zeitraum">
           <button data-range="fc" aria-pressed="true">Prognose</button>
@@ -70,7 +70,7 @@
       <h2 id="t-fc">Prognose nach Tagen</h2>
       <div class="table-scroll">
         <table class="data" id="fc-table">
-          <thead><tr><th>Tag</th><th class="num">Abfluss m³/s</th><th class="num">Spanne</th><th class="num">Wasserstand cm</th><th class="num">Spanne</th><th class="num">Niederschlag mm</th></tr></thead>
+          <thead><tr><th>Tag</th><th class="num">Wasserstand cm</th><th class="num">Spanne</th><th class="num">Abfluss m³/s</th><th class="num">Spanne</th><th class="num">Niederschlag mm</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>

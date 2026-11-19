@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const HOUR = 3600e3, DAY = 24 * HOUR;
   const TZ = "Europe/Berlin";
-  const state = { param: "q", range: "fc" };
+  const state = { param: "w", range: "fc" };
   let L = null, Hs = null; // latest.json, history.json
   let charts = [];
 
@@ -76,11 +76,11 @@
 
     // Prognose-Tendenz (Median nach 72 h)
     const f = L.forecast, k = Math.min(71, f.q[2].length - 1);
-    const med = f.q[2][k], lo = f.q[0][k], hi = f.q[4][k];
+    const med = f.q[2][k];
     const r = med / c.q;
     const tr = r > 1.15 ? "Steigend" : r > 1.05 ? "Leicht steigend" : r < 0.87 ? "Fallend" : r < 0.95 ? "Leicht fallend" : "Gleichbleibend";
     $("fc-label").textContent = tr;
-    $("fc-sub").textContent = `in 3 Tagen ca. ${fq(med)} m³/s (${fq(lo)}–${fq(hi)})`;
+    $("fc-sub").textContent = `in 3 Tagen ca. ${fw(f.w[2][k])} cm (${fw(f.w[0][k])}–${fw(f.w[4][k])})`;
 
     // Hinweise: veraltete Daten / mögliche Überschreitung HQ1
     const msgs = [];
@@ -108,8 +108,8 @@
       const date = Date.parse(d.date + "T12:00Z");
       tr.append(
         td(dshort.format(date)),
-        td(fq(d.q[1]), "num"), td(`${fq(d.q[0])}–${fq(d.q[2])}`, "num range"),
         td(fw(d.w[1]), "num"), td(`${fw(d.w[0])}–${fw(d.w[2])}`, "num range"),
+        td(fq(d.q[1]), "num"), td(`${fq(d.q[0])}–${fq(d.q[2])}`, "num range"),
         td(d.p < 0.1 ? "–" : `${NF1.format(d.p)}${d.p90 > d.p * 1.5 && d.p90 >= 1 ? ` (bis ${NF0.format(d.p90)})` : ""}`, "num")
       );
       tb.append(tr);
@@ -449,7 +449,7 @@
   function setState(patch) {
     Object.assign(state, patch);
     syncButtons();
-    history.replaceState(null, "", state.range === "fc" && state.param === "q" ? location.pathname : `#${state.range}-${state.param}`);
+    history.replaceState(null, "", state.range === "fc" && state.param === "w" ? location.pathname : `#${state.range}-${state.param}`);
     if (L) renderCharts();
   }
   {
