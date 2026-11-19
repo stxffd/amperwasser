@@ -226,6 +226,24 @@ export function quantile(sorted, q) {
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
 }
 
+// Gewichtete Quantile: vals/wts gleich lang, ps aufsteigend in [0,1]
+export function wQuantiles(vals, wts, ps) {
+  const ord = Array.from(vals.keys()).filter((k) => Number.isFinite(vals[k]) && wts[k] > 0).sort((a, b) => vals[a] - vals[b]);
+  if (!ord.length) return ps.map(() => NaN);
+  const tot = ord.reduce((s, k) => s + wts[k], 0);
+  // Stützstellen in der Mitte jedes Gewichtsblocks (wie quantile() bei gleichen Gewichten)
+  const pos = [];
+  let c = 0;
+  for (const k of ord) { pos.push((c + wts[k] / 2) / tot); c += wts[k]; }
+  return ps.map((p) => {
+    if (p <= pos[0]) return vals[ord[0]];
+    for (let j = 1; j < ord.length; j++) {
+      if (p <= pos[j]) return vals[ord[j - 1]] + ((vals[ord[j]] - vals[ord[j - 1]]) * (p - pos[j - 1])) / (pos[j] - pos[j - 1]);
+    }
+    return vals[ord.at(-1)];
+  });
+}
+
 // W (cm) <-> Q (m³/s) über Abflusstafel [[cm, m3s], ...] (monoton)
 export function qFromW(table, w) {
   if (w <= table[0][0]) return table[0][1];

@@ -4,8 +4,8 @@
   const $ = (id) => document.getElementById(id);
   const HOUR = 3600e3, DAY = 24 * HOUR;
   const TZ = "Europe/Berlin";
-  const state = { param: "w", range: "fc" };
-  let L = null, Hs = null; // latest.json, history.json
+  const state = { param: "w", range: "fc", cmp: 0 };
+  let L = null, Hs = null, V = null; // latest.json, history.json, verify.json
   let charts = [];
 
   // ---------- Formatierung ----------
@@ -39,7 +39,7 @@
   async function load() {
     const get = (f) => fetch(`data/${f}`, { cache: "no-cache" }).then((r) => { if (!r.ok) throw new Error(f + ": " + r.status); return r.json(); });
     try {
-      [L, Hs] = await Promise.all([get("latest.json"), get("history.json")]);
+      [L, Hs, V] = await Promise.all([get("latest.json"), get("history.json"), get("verify.json").catch(() => null)]);
     } catch (e) {
       $("stand").textContent = "Daten konnten nicht geladen werden.";
       console.error(e);
@@ -47,7 +47,43 @@
     }
     renderTiles();
     renderTables();
+    renderCheck();
     renderCharts();
+  }
+
+  // ---------- Prognose-Check ----------
+  const leadName = (h) => (h < 48 ? (h === 24 ? "morgen (24 h)" : `${h} h`) : `in ${h / 24} Tagen`);
+  const monthYear = new Intl.DateTimeFormat("de-DE", { timeZone: TZ, month: "short", year: "numeric" });
+  function renderCheck() {
+    const hc = V?.hindcast;
+    if (!hc?.table) return;
+    $("check").hidden = false;
+    const live = V.live;
+    const liveOk = live?.table?.some((r) => r.n >= 20);
+    $("check-intro").textContent =
+      `Für jeden Tag von ${monthYear.format(Date.parse(hc.period[0]))} bis ${monthYear.format(Date.parse(hc.period[1]))} wurde die Prognose so nachgerechnet, wie sie damals möglich gewesen wäre – mit den Wettervorhersagen, die zu dem Zeitpunkt vorlagen. Mittlere Abweichung des Wasserstands:`;
+    $("check-live-h").textContent = liveOk ? `Live seit ${monthYear.format(live.since)}` : "Live-Prognosen";
+    const tb = $("check-table").querySelector("tbody");
+    tb.replaceChildren();
+    for (const r of hc.table) {
+      if (![24, 72, 168, 336].includes(r.lead_h)) continue;
+      const lv = live?.table?.find((x) => x.lead_h === r.lead_h);
+      const tr = document.createElement("tr");
+      tr.append(
+        td(leadName(r.lead_h)),
+        td(`± ${NF0.format(r.mae_w)} cm`, "num" + (r.mae_w < r.mae_w_pers ? " good" : "")),
+        td(`± ${NF0.format(r.mae_w_pers)} cm`, "num"),
+        td(lv && lv.n >= 20 ? `± ${NF0.format(lv.mae_w)} cm · ${NF0.format(lv.cover80 * 100)} % in Spanne` : "noch zu wenige", "num range")
+      );
+      tb.append(tr);
+    }
+    const hv = hc.halves;
+    const n = live?.archived ?? 0;
+    const imp = hv ? hc.table.reduce((a, r) => a + r.mae_w_before, 0) / hc.table.reduce((a, r) => a + r.mae_w, 0) - 1 : 0;
+    $("check-note").textContent =
+      (hv && imp > 0.005 ? `Die Kalibrierung mit gemessenen Schneehöhen und die Optimierung verringern die Abweichung im Mittel um ${NF0.format(imp * 100)} % – geprüft getrennt für beide Hälften des Zeitraums (${NF1.format(hv.before[0])} → ${NF1.format(hv.after[0])} cm und ${NF1.format(hv.before[1])} → ${NF1.format(hv.after[1])} cm). ` : "") +
+      `Jede veröffentlichte Prognose wird archiviert und später mit dem Gemessenen verglichen` +
+      (n ? ` (bisher ${n} Prognosen).` : ".");
   }
 
   // ---------- Kacheln ----------
@@ -147,7 +183,18 @@
       tr.append(td(s.lead_h < 48 ? `${s.lead_h} h` : `${s.lead_h / 24} Tage`), td(`± ${NF1.format(s.mape_model)} %`, "num"), td(`± ${NF1.format(s.mape_persistence)} %`, "num"));
       sb.append(tr);
     }
+    // Schneehöhen
+    for (const s of L.snow?.stations || []) {
+      if (s.cm == null) continue;
+      const tr = document.createElement("tr");
+      const age = Math.round((Date.now() - Date.parse(s.date + "T06:00Z")) / DAY);
+      tr.append(td(`Schneehöhe ${s.name} (${NF0.format(s.elev)} m)`), td(`${NF0.format(s.cm)} cm`, "num"), td("", "num"), td(age <= 0 ? "heute" : age === 1 ? "gestern" : dshort.format(Date.parse(s.date + "T06:00Z")), "num"));
+      ub.append(tr);
+    }
     if (L.forecast.models?.length) $("about-models").textContent = L.forecast.models.join(", ") + ` (${L.forecast.members} Szenarien)`;
+    $("about-snow").textContent = `${L.snow?.assim ? `täglicher Abgleich aktiv: ${L.snow.assim}; ` : ""}im Modell derzeit gespeichert im Ammergebiet: ca. ${NF0.format(L.snow?.swe ?? 0)} mm Wasser`;
+    const ch = V?.hindcast?.chosen;
+    if (ch) $("about-chosen").textContent = `täglicher Schnee-Abgleich: ${ch.snow}; Gewicht ICON ${NF0.format(ch.wIcon * 100)} %, ECMWF ${NF0.format((1 - ch.wIcon) * 100)} % (Tag 1–5); Niederschlag ×${NF1.format(ch.fS)} (Tag 1–3), ×${NF1.format(ch.fM)} (Tag 4–8)`;
   }
 
   // ---------- Diagramm-Daten ----------
@@ -169,8 +216,17 @@
       xs.push((f.t0 + i * f.step) / 1e3); o.push(null);
       m.push(bands[2][i]); p10.push(bands[0][i]); p90.push(bands[4][i]); p25.push(bands[1][i]); p75.push(bands[3][i]);
     }
-    return { xs, data: [xs, o, m, p10, p90, p25, p75], now: L.forecast.t0 - HOUR };
+    // Frühere Prognose (Median, 6-h-Schritte) zum Vergleich
+    const cmp = xs.map(() => null);
+    const pf = state.cmp ? pastFc(state.cmp) : null;
+    if (pf) {
+      const vals = param === "q" ? pf.q : pf.w;
+      const pos = new Map(xs.map((x, k) => [Math.round(x), k]));
+      vals.forEach((v, j) => { const k = pos.get(Math.round((pf.t + (j + 1) * pf.step) / 1e3)); if (k != null) cmp[k] = v; });
+    }
+    return { xs, data: [xs, o, m, p10, p90, p25, p75, cmp], now: L.forecast.t0 - HOUR, pf };
   }
+  const pastFc = (d) => V?.past?.find((p) => p.days === d) || null;
 
   function precipView(xs) {
     const pp = L.precipPast, f = L.forecast;
@@ -318,8 +374,9 @@
     for (const [kind, color, text] of items) {
       const s = document.createElement("span");
       const k = document.createElement("i");
-      k.className = kind === "band" ? "key-band" : "key-line";
-      k.style.background = color;
+      k.className = kind === "band" ? "key-band" : kind === "dash" ? "key-dash" : "key-line";
+      if (kind === "dash") k.style.borderTopColor = color;
+      else k.style.background = color;
       s.append(k, document.createTextNode(text));
       el.append(s);
     }
@@ -353,15 +410,21 @@
     const OBS = css("--obs"), FC = css("--fc");
     const hourly = r === "fc" || r === "30";
     $("precip-wrap").hidden = !hourly;
+    $("cmp-wrap").hidden = !(hourly && V?.past?.length);
+    if (!$("cmp-wrap").hidden) for (const o of $("cmp").options) o.disabled = o.value !== "0" && !pastFc(+o.value);
+    $("cmp").value = String(state.cmp);
 
     let opts, data;
     if (hourly) {
       const v = hourlyView(p, r === "fc" ? 5 : 30);
       data = v.data;
+      const CMP = css("--ink-2");
+      const cmpLabel = v.pf ? `Prognose vom ${dtf.format(v.pf.t)} Uhr` : "";
       const rows = (u, i) => [
         ["Messung", data[1][i] != null ? `${F(data[1][i])} ${U}` : null, OBS],
         ["Prognose (Median)", data[2][i] != null && data[1][i] == null ? `${F(data[2][i])} ${U}` : null, FC],
         ["80 % der Szenarien", data[3][i] != null && data[1][i] == null ? `${F(data[3][i])}–${F(data[4][i])}` : null, null],
+        v.pf ? [state.cmp === 1 ? "Prognose von gestern" : `Prognose von vor ${state.cmp} Tagen`, data[7][i] != null ? `${F(data[7][i])} ${U}` : null, CMP] : null,
       ];
       rows.title = (ms) => dtf.format(ms) + " Uhr";
       opts = baseOpts(...Object.values(chartSize(mainEl, 340)), {
@@ -372,11 +435,12 @@
           { stroke: FC, width: 2 },
           { stroke: "transparent", width: 0 }, { stroke: "transparent", width: 0 },
           { stroke: "transparent", width: 0 }, { stroke: "transparent", width: 0 },
+          { stroke: CMP, width: 2, dash: [6, 4], spanGaps: true, points: { show: false } },
         ],
         bands: [{ series: [4, 3], fill: css("--fc-band") }, { series: [6, 5], fill: css("--fc-band-in") }],
         plugins: [refPlugin(p, v.now), tipPlugin(rows)],
       });
-      legend([["line", OBS, "Messung"], ["line", FC, "Prognose (Median)"], ["band", css("--fc-band-in"), "50 % der Szenarien"], ["band", css("--fc-band"), "80 %"]]);
+      legend([["line", OBS, "Messung"], ["line", FC, "Prognose (Median)"], ["band", css("--fc-band-in"), "50 % der Szenarien"], ["band", css("--fc-band"), "80 %"], ...(v.pf ? [["dash", CMP, cmpLabel]] : [])]);
       $("chart-hint").textContent = `Stundenwerte · Prognose ${L.forecast.members} Wetterszenarien + Modellfehler · Bereich ziehen zum Zoomen, Doppelklick zurück`;
       charts.push(new uPlot(opts, data, mainEl));
 
@@ -459,6 +523,7 @@
   }
   document.querySelectorAll("[data-param]").forEach((b) => b.addEventListener("click", () => setState({ param: b.dataset.param })));
   document.querySelectorAll("[data-range]").forEach((b) => b.addEventListener("click", () => setState({ range: b.dataset.range })));
+  $("cmp").addEventListener("change", (e) => { state.cmp = +e.target.value; if (L) renderCharts(); });
   let rt;
   window.addEventListener("resize", () => {
     clearTimeout(rt);

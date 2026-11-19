@@ -214,7 +214,68 @@ async function bias() {
   fs.writeFileSync(path.join(MODEL_DIR, "precip_bias.json"), JSON.stringify(out, null, 1));
 }
 
-const cmds = { gauges, recent, daily, meteo, "meteo-recent": meteoRecent, bias };
+// Archivierte Vorhersagen (Previous Runs API): je Vorlauftag d den Wert, den der Lauf d Tage vorher vorhersagte.
+// Spalten P{d}_{punkt}, T{d}_{punkt}; d = 0 ist der jeweils jüngste Lauf.
+//   reforecast [--from 2024-02-10] [--days N (nur die letzten N Tage)] [--pause 20]
+async function reforecast() {
+  const { REFORECAST_MODELS, REFORECAST_FROM, ENS_POINTS } = await import("./config.mjs");
+  const pause = +opt("pause", 20) * 1000;
+  const endMs = Date.now() - DAY;
+  const fromMs = opt("days") ? endMs - +opt("days") * DAY : Date.parse(opt("from", REFORECAST_FROM));
+  const loc = `latitude=${ENS_POINTS.map((p) => p.lat)}&longitude=${ENS_POINTS.map((p) => p.lon)}&elevation=${ENS_POINTS.map((p) => p.elev)}`;
+  for (const [model, maxDay] of Object.entries(REFORECAST_MODELS)) {
+    const dir = path.join(HIST_DIR, "reforecast", model);
+    fs.mkdirSync(dir, { recursive: true });
+    const days = Array.from({ length: maxDay + 1 }, (_, d) => d);
+    const vars = days.flatMap((d) => (d === 0 ? ["precipitation", "temperature_2m"] : [`precipitation_previous_day${d}`, `temperature_2m_previous_day${d}`]));
+    const keys = days.flatMap((d) => ENS_POINTS.flatMap((p) => [`P${d}_${p.key}`, `T${d}_${p.key}`]));
+    const digits = Object.fromEntries(keys.map((k) => [k, k.startsWith("T") ? 1 : 2]));
+    // Stücke à ~4 Monate
+    for (let s = fromMs; s < endMs; s += 120 * DAY) {
+      const a = new Date(s).toISOString().slice(0, 10), b = new Date(Math.min(s + 119 * DAY, endMs)).toISOString().slice(0, 10);
+      const url = `https://previous-runs-api.open-meteo.com/v1/forecast?${loc}&hourly=${vars}&models=${model}&start_date=${a}&end_date=${b}&timezone=UTC`;
+      let j;
+      for (let r = 0; r < 4; r++) {
+        const res = await fetch(url);
+        j = await res.json().catch(() => ({ error: true, reason: res.status }));
+        if (!j.error) break;
+        console.warn("  Wiederholung", model, a, j.reason);
+        if (String(j.reason).includes("Daily")) throw new Error("Tageskontingent erschöpft: " + j.reason);
+        await sleep(60e3);
+      }
+      if (j.error) throw new Error(j.reason);
+      const arr = Array.isArray(j) ? j : [j];
+      const fresh = {};
+      ENS_POINTS.forEach((p, k) => days.forEach((d) => {
+        const h = arr[k].hourly;
+        const pv = h[d === 0 ? "precipitation" : `precipitation_previous_day${d}`], tv = h[d === 0 ? "temperature_2m" : `temperature_2m_previous_day${d}`];
+        const P = new Map(), T = new Map();
+        h.time.forEach((ts, i) => { const t = Date.parse(ts + "Z"); if (pv[i] != null) P.set(t, pv[i]); if (tv[i] != null) T.set(t, tv[i]); });
+        fresh[`P${d}_${p.key}`] = P; fresh[`T${d}_${p.key}`] = T;
+      }));
+      for (let y = +a.slice(0, 4); y <= +b.slice(0, 4); y++) mergeYear(dir, y, keys, fresh, digits);
+      console.log("reforecast", model, a, "…", b);
+      await sleep(pause);
+    }
+  }
+}
+
+// Schneehöhen der DWD-Stationen: snow [--historical]
+async function snow() {
+  const { SNOW_STATIONS } = await import("./config.mjs");
+  const { fetchStation, readSnow, writeSnow } = await import("./lib/snow.mjs");
+  const data = readSnow();
+  for (const s of SNOW_STATIONS) {
+    const m = await fetchStation(s.id, { historical: args.includes("--historical") });
+    const tgt = data.get(s.id);
+    for (const [d, v] of m) if (d >= "1998-01-01") tgt.set(d, v);
+    console.log("snow", s.id, s.name, m.size, "Tage");
+    await sleep(300);
+  }
+  writeSnow(data);
+}
+
+const cmds = { gauges, recent, daily, meteo, "meteo-recent": meteoRecent, bias, reforecast, snow };
 if (!cmds[cmd]) {
   console.error("Befehl: " + Object.keys(cmds).join(" | "));
   process.exit(1);

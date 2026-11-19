@@ -2,22 +2,30 @@
 //   node scripts/update.mjs
 import fs from "node:fs";
 import path from "node:path";
-import { SERIES, METEO_POINTS, ENS_POINTS, ENS_MAP, HIST_DIR, MODEL_DIR, SITE_DATA_DIR, ZONE_AREAS, AREAS, GRAFRATH_STATS, GRAFRATH_RATING } from "./config.mjs";
+import { SERIES, METEO_POINTS, ENS_POINTS, ENS_MAP, HIST_DIR, MODEL_DIR, SITE_DATA_DIR, ZONE_AREAS, AREAS, GRAFRATH_STATS, GRAFRATH_RATING, SNOW_STATIONS } from "./config.mjs";
 import { loadAll, zoneForcing, lastValid } from "./lib/data.mjs";
 import { fetchRaw, toHourly } from "./lib/gkd.mjs";
 import { forecast as omForecast, ensemble as omEnsemble } from "./lib/openmeteo.mjs";
-import { zoneState, runZone, mmh2cms, quantile, wFromQ } from "./lib/model.mjs";
+import { zoneState, runZone, mmh2cms, quantile, wQuantiles, wFromQ } from "./lib/model.mjs";
 import { runChain } from "./lib/forecast.mjs";
+import { readSnow, fetchStation, snowSetup, snowCorrect, cloneSnow, lastObsHour, runZonesSnow } from "./lib/snow.mjs";
+import { loadArchive, appendForecast, liveStats, pastForecasts } from "./lib/archive.mjs";
 import { HOUR, DAY, floorHour, sleep } from "./lib/time.mjs";
 import { fillGaps } from "./lib/store.mjs";
 
 const T_START = Date.now();
 const log = (...a) => console.log(`[${((Date.now() - T_START) / 1000).toFixed(1)}s]`, ...a);
-const P = JSON.parse(fs.readFileSync(path.join(MODEL_DIR, "params.json"), "utf8"));
-const SKILL = JSON.parse(fs.readFileSync(path.join(MODEL_DIR, "skill.json"), "utf8"));
-const biasFile = path.join(MODEL_DIR, "precip_bias.json");
-const BIAS = fs.existsSync(biasFile) ? JSON.parse(fs.readFileSync(biasFile, "utf8")).factors : {};
+const readJson = (f, d = null) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : d);
+const P = readJson(path.join(MODEL_DIR, "params.json"));
+const SKILL = readJson(path.join(MODEL_DIR, "skill.json"));
+const BIAS = readJson(path.join(MODEL_DIR, "precip_bias.json"), { factors: {} }).factors;
 const bf = (k) => BIAS[k] ?? 1;
+// Mit Reforecasts geprüfte Prognose-Einstellungen (scripts/verify.mjs)
+const CFG = readJson(path.join(MODEL_DIR, "forecast_config.json"), {});
+const VERIFY = readJson(path.join(MODEL_DIR, "verify.json"));
+if (CFG.TA) P.TA = CFG.TA;
+if (CFG.TG) P.TG = CFG.TG;
+const LOCAL = process.argv.includes("--local"); // lokaler Testlauf: Archiv darf fehlen
 const H = 14 * 24; // Vorhersagehorizont (h)
 const now = Date.now();
 const nowH = floorHour(now);
@@ -83,16 +91,28 @@ METEO_POINTS.forEach((p, k) => {
 for (const k of Object.keys(M)) fillGaps(M[k], 6);
 log("Wetter ergänzt ab", new Date(t0 + (lastMet + 1) * HOUR).toISOString(), `(past_days=${pastDays})`);
 
-// ------------------------------------------------------------------ 3) Modell-Warmlauf bis i0
+// ------------------------------------------------------------------ 3) Modell-Warmlauf bis i0 (mit Schnee-Assimilation)
 const F = { ammer: zoneForcing(M, "ammer"), see: zoneForcing(M, "see"), amper: zoneForcing(M, "amper") };
 const states = { ammer: zoneState(F.ammer.w.length), see: zoneState(F.see.w.length), amper: zoneState(F.amper.w.length) };
 const simPast = { ammer: new Float64Array(n).fill(NaN), amper: new Float64Array(n).fill(NaN) };
-{
-  const qa = runZone(P.ammer, F.ammer, states.ammer, 0, i0 + 1);
-  runZone(P.see, F.see, states.see, 0, i0 + 1);
-  const qr = runZone(P.amper, F.amper, states.amper, 0, i0 + 1);
-  for (let i = 0; i <= i0; i++) { simPast.ammer[i] = mmh2cms(qa[i], ZONE_AREAS.ammer); simPast.amper[i] = mmh2cms(qr[i], ZONE_AREAS.amper); }
+const snowData = readSnow();
+for (const s of SNOW_STATIONS) {
+  try {
+    for (const [d, v] of await fetchStation(s.id)) snowData.get(s.id).set(d, v);
+  } catch (e) {
+    log("WARNUNG Schneehöhe", s.name, e.message);
+  }
 }
+const snowOpt = CFG.snow && CFG.snow.mode !== "off" && CFG.snow.alpha > 0 ? { ...CFG.snow, t0 } : null;
+const st = snowSetup(snowData, t0, n, F, METEO_POINTS);
+{
+  const q = runZonesSnow(runZone, { ammer: P.ammer, see: P.see, amper: P.amper }, F, states, st, 0, i0 + 1, snowOpt);
+  for (let i = 0; i <= i0; i++) { simPast.ammer[i] = mmh2cms(q.ammer[i], ZONE_AREAS.ammer); simPast.amper[i] = mmh2cms(q.amper[i], ZONE_AREAS.amper); }
+  if (snowOpt?.mode === "once") snowCorrect(cloneSnow(st), states, lastObsHour(i0, t0), snowOpt);
+}
+// Schneespeicher (mm Wasser) im Ammer-Gebiet, flächengewichtet
+const sweAmmer = F.ammer.w.reduce((a, w, k) => a + w * (states.ammer.sp[k] + states.ammer.wc[k]), 0);
+log("Schnee", snowOpt ? CFG.snow.name : "ohne Assimilation", "· Wasseräquivalent Ammergebiet", sweAmmer.toFixed(1), "mm");
 const obs = { weilheim_q: G.weilheim_q, stegen_q: G.stegen_q, ammersee_w: G.ammersee_w, grafrath_q: G.grafrath_q };
 const baseCtx = { i0, H, tIssue, states, forcing: F, lakeP: M.P_ammersee, lakeE: M.E_ammersee, obs, simPast };
 const detRun = runChain(P, baseCtx);
@@ -138,7 +158,13 @@ const nEC = ec ? ec.points[0].members.length : 0, nEU = eu ? eu.points[0].member
 for (let k = 0; k < nEC; k++) chains.push([[ec, k]]);
 for (let k = 0; k < nEU; k++) chains.push([[eu, k], [ec, k]]);
 for (let k = 0; k < nD2; k++) chains.push([[d2, k], [eu, k], [ec, k]]);
-log("Member gesamt:", chains.length);
+// Gewichte: ICON-Gruppe (EU/D2-Ketten) zusammen wIcon, ECMWF-Gruppe 1 − wIcon (in verify.mjs bestimmt)
+const wIcon = CFG.wIcon ?? (nEU + nD2) / Math.max(1, chains.length);
+const nI = nEU + nD2;
+const memberW = chains.map((_, k) => (k < nEC ? (nI ? (1 - wIcon) / nEC : 1 / nEC) : nEC ? wIcon / nI : 1 / nI));
+log("Member gesamt:", chains.length, `· Gewicht ICON ${(nI && nEC ? wIcon : nI ? 1 : 0).toFixed(2)}`);
+// Niederschlagsfaktor je Vorlauftag (Tag 0–2 / 3–7 / ab 8)
+const facAt = (l) => { const d = Math.floor((l - 1) / 24); return d <= 2 ? CFG.fS ?? 1 : d <= 7 ? CFG.fM ?? 1 : 1; };
 
 function runMember(chain) {
   // Kopie der Zukunftsabschnitte der Wetterreihen
@@ -149,18 +175,18 @@ function runMember(chain) {
     for (let l = 1; l <= H; l++) {
       const i = i0 + l, ti = t0 + i * HOUR;
       const pr = memberSeries(chain, e, "precipitation", ti), te = memberSeries(chain, e, "temperature_2m", ti);
-      if (pr != null) Pa[i] = pr;
+      if (pr != null) Pa[i] = pr * facAt(l);
       if (te != null) Ta[i] = te + dz;
     }
     Mm[`P_${p.key}`] = Pa; Mm[`T_${p.key}`] = Ta; Mm[`E_${p.key}`] = M[`E_${p.key}`];
   }
   const Fm = { ammer: zoneForcing(Mm, "ammer"), see: zoneForcing(Mm, "see"), amper: zoneForcing(Mm, "amper") };
-  return { r: runChain(P, { ...baseCtx, forcing: Fm, lakeP: Mm.P_ammersee }), pf: futurePrecip(Mm) };
+  return { r: runChain(P, { ...baseCtx, forcing: Fm, lakeP: Mm.P_ammersee }), pf: futurePrecip(Mm, true) };
 }
-// Nur der Gebietsniederschlag der Zukunft wird je Member behalten (Speicher!)
-function futurePrecip(Mx) {
+// Nur der Gebietsniederschlag der Zukunft wird je Member behalten (Speicher!); angezeigt wird der unskalierte Wert
+function futurePrecip(Mx, scaled = false) {
   const out = new Float64Array(H);
-  for (let l = 1; l <= H; l++) out[l - 1] = areaPrecip(Mx, i0 + l);
+  for (let l = 1; l <= H; l++) out[l - 1] = areaPrecip(Mx, i0 + l) / (scaled ? facAt(l) : 1);
   return out;
 }
 
@@ -180,26 +206,33 @@ function areaPrecip(Mx, i) {
 }
 
 const members = chains.length ? chains.map(runMember) : [{ r: detRun, pf: futurePrecip(M) }];
+const mW = chains.length ? memberW : [1];
 log("Ensemble gerechnet");
 
-// ------------------------------------------------------------------ 5) Unsicherheit: Ensemble x Modellfehler (Hindcasts)
-const EQ = SKILL.errQuantiles;
-const errAt = (lead) => {
+// ------------------------------------------------------------------ 5) Unsicherheit
+// Mischung zweier Stichproben zu gleichen Teilen:
+//  A) Ensemble-Member × Modellfehler bei bekanntem Wetter (Kalibrierungs-Hindcasts) – situationsabhängige Streuung
+//  B) Ensemble-Median × Gesamtfehler der Reforecast-Hindcasts (echte Vorhersagen) – historisch geeichte Streuung
+const errAtOf = (EQ) => (lead) => {
   let k = EQ.leads.findIndex((L) => L >= lead);
   if (k < 0) k = EQ.leads.length - 1;
   return EQ.values[k];
 };
+const errPW = errAtOf(SKILL.errQuantiles), errRF = CFG.errQuantiles ? errAtOf(CFG.errQuantiles) : null;
 const PCT = [0.1, 0.25, 0.5, 0.75, 0.9];
 const qBands = PCT.map(() => new Float64Array(H));
 const lakeBands = [0.1, 0.5, 0.9].map(() => new Float64Array(H));
 for (let l = 0; l < H; l++) {
-  const errs = errAt(l + 1);
-  const sample = [];
-  for (const { r } of members) for (const e of errs) sample.push(r.qG[l] * Math.exp(e));
-  sample.sort((a, b) => a - b);
-  PCT.forEach((p, k) => (qBands[k][l] = quantile(sample, p)));
-  const hs = members.map(({ r }) => r.H[l]).sort((a, b) => a - b);
-  [0.1, 0.5, 0.9].forEach((p, k) => (lakeBands[k][l] = quantile(hs, p)));
+  const vals = [], wts = [];
+  const ea = errPW(l + 1), shareA = errRF ? 0.5 : 1;
+  members.forEach(({ r }, k) => { for (const e of ea) { vals.push(r.qG[l] * Math.exp(e)); wts.push((shareA * mW[k]) / ea.length); } });
+  if (errRF) {
+    const med = wQuantiles(members.map(({ r }) => r.qG[l]), mW, [0.5])[0];
+    const eb = errRF(l + 1);
+    for (const e of eb) { vals.push(med * Math.exp(e)); wts.push(0.5 / eb.length); }
+  }
+  wQuantiles(vals, wts, PCT).forEach((v, k) => (qBands[k][l] = v));
+  wQuantiles(members.map(({ r }) => r.H[l]), mW, [0.1, 0.5, 0.9]).forEach((v, k) => (lakeBands[k][l] = v));
 }
 
 // Wasserstand über Abflusstafel, auf aktuellen Messwert geeicht
@@ -212,9 +245,9 @@ const precipPast = [];
 for (let i = i0 - 7 * 24 + 1; i <= i0; i++) precipPast.push(+areaPrecip(M, i).toFixed(2));
 const precipFc = { p50: [], p90: [] };
 for (let l = 1; l <= H; l++) {
-  const v = members.map(({ pf }) => pf[l - 1]).sort((a, b) => a - b);
-  precipFc.p50.push(+quantile(v, 0.5).toFixed(2));
-  precipFc.p90.push(+quantile(v, 0.9).toFixed(2));
+  const [p50, p90] = wQuantiles(members.map(({ pf }) => pf[l - 1]), mW, [0.5, 0.9]);
+  precipFc.p50.push(+p50.toFixed(2));
+  precipFc.p90.push(+p90.toFixed(2));
 }
 
 // ------------------------------------------------------------------ 6) Historie, Klimatologie, Einordnung
@@ -345,6 +378,15 @@ const latest = {
     days: fcDays,
   },
   precipPast: { t0: tIssue - 7 * 24 * HOUR + HOUR, step: HOUR, p: precipPast },
+  snow: {
+    swe: r2(sweAmmer, 0),
+    assim: snowOpt ? CFG.snow.name : null,
+    stations: ["06214", "03677", "02290"].map((id) => {
+      const s = SNOW_STATIONS.find((x) => x.id === id), m = snowData.get(id);
+      const d = m && m.size ? [...m.keys()].sort().at(-1) : null;
+      return { name: s.name, elev: s.elev, date: d, cm: d ? m.get(d) : null };
+    }),
+  },
   skill: SKILL.skill,
   calibrated: P.calibrated,
 };
@@ -359,4 +401,17 @@ const history = {
   clim: { pct: CPCT, q: clim.q, w: clim.w },
 };
 fs.writeFileSync(path.join(SITE_DATA_DIR, "history.json"), JSON.stringify(history));
-log("geschrieben:", path.join(SITE_DATA_DIR, "latest.json"), "+ history.json");
+
+// ------------------------------------------------------------------ 8) Prognosearchiv + Prüfung
+const archive = await loadArchive({ allowOffline: LOCAL });
+const added = appendForecast(archive, tIssue, { w: [wBands[0], wBands[2], wBands[4]], q: [qBands[0], qBands[2], qBands[4]] });
+fs.writeFileSync(path.join(SITE_DATA_DIR, "archive.json"), JSON.stringify({ step: 6 * HOUR, items: archive }));
+const obsW = (ms) => { const i = I(ms); return i >= 0 && i < n && Number.isFinite(G.grafrath_w[i]) ? G.grafrath_w[i] : NaN; };
+const verifyOut = {
+  generated: now,
+  hindcast: VERIFY && { period: VERIFY.period, split: VERIFY.split, issues: VERIFY.issues, table: VERIFY.table, halves: VERIFY.halves, chosen: VERIFY.chosen },
+  live: { ...liveStats(archive, obsW, nowH), archived: archive.length, firstArchived: archive[0]?.t ?? null },
+  past: pastForecasts(archive, tIssue),
+};
+fs.writeFileSync(path.join(SITE_DATA_DIR, "verify.json"), JSON.stringify(verifyOut));
+log("geschrieben: latest.json, history.json, verify.json, archive.json", `(${archive.length} archivierte Prognosen${added ? ", neu ergänzt" : ""})`);

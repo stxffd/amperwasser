@@ -1,5 +1,5 @@
 // Kalibrierung und Bewertung des Prognosemodells.
-//   node scripts/calibrate.mjs [--gens 60] [--valFrom 2017] [--quick] [--reuse]
+//   node scripts/calibrate.mjs [--gens 60] [--valFrom 2017] [--quick] [--reuse] [--snowWeight 0.25] [--out params.json]
 // Ergebnis: data/model/params.json (Parameter) und data/model/skill.json (Hindcast-Güte, Fehlerquantile)
 import fs from "node:fs";
 import path from "node:path";
@@ -7,6 +7,8 @@ import { MODEL_DIR, ZONE_AREAS } from "./config.mjs";
 import { loadAll, zoneForcing } from "./lib/data.mjs";
 import { ZONE_PARAMS, zoneState, cloneState, runZone, mmh2cms, runLake, lakeOutflow, nse, kge, optimize, quantile } from "./lib/model.mjs";
 import { runChain } from "./lib/forecast.mjs";
+import { readSnow, snowSetup, snowShadow, lastObsHour, RHO } from "./lib/snow.mjs";
+import { METEO_POINTS } from "./config.mjs";
 import { HOUR, DAY } from "./lib/time.mjs";
 
 const args = process.argv.slice(2);
@@ -18,6 +20,7 @@ const VAL_FROM = +opt("valFrom", 2017);
 const readJson = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : null);
 const OLD = args.includes("--reuse") ? readJson(path.join(MODEL_DIR, "params.json")) : null;
 const OLD_SKILL = OLD ? readJson(path.join(MODEL_DIR, "skill.json")) : null;
+const OUT_P = opt("out", "params.json"), OUT_S = OUT_P.replace("params", "skill");
 
 const t = Date.now();
 const log = (...a) => console.log(`[${((Date.now() - t) / 1000).toFixed(0)}s]`, ...a);
@@ -114,17 +117,43 @@ log("Seekennlinie", rating.h.length, "Stützstellen", `${rating.h[0]}…${rating
 const LAKE = { area: 46.6, rating, month };
 
 // ---------------------------------------------------------------- C) Ammer bis Weilheim
+// Ziel: Abfluss Weilheim (NSE, NSE der Wurzel) und – mit Gewicht SNOW_W – die an den DWD-Stationen
+// gemessene Schneedecke (Wasseräquivalent, Nov.–Mai), damit die Schneeschmelze realistisch abläuft.
 const obsW = G.weilheim_q;
+const SNOW_W = +opt("snowWeight", 0.25);
+const stAmmer = snowSetup(readSnow(), t0, D.n, F, METEO_POINTS).filter((s) => s.zone === "ammer");
+const snowObs = []; // [stationIdx, Stundenindex, SWE mm], nach Zeit sortiert
+for (let i = lastObsHour(WARM, t0) + 24; i < CAL_END; i += 24) {
+  const mo = new Date(t0 + i * HOUR).getUTCMonth();
+  if (mo > 4 && mo < 10) continue;
+  stAmmer.forEach((s, k) => { const d = s.obs.get(i); if (d !== undefined) snowObs.push([k, i, d * 10 * RHO[mo]]); });
+}
+const snowMean = snowObs.reduce((a, x) => a + x[2], 0) / Math.max(1, snowObs.length);
+const snowVar = snowObs.reduce((a, x) => a + (x[2] - snowMean) ** 2, 0);
+function snowNse(p) {
+  const st = stAmmer.map((s) => ({ ...s, swe: 0, wc: 0 }));
+  const par = { ammer: p };
+  let a = 0, err = 0;
+  for (let j = 0; j < snowObs.length; ) {
+    const i = snowObs[j][1];
+    snowShadow(st, par, F, a, i + 1);
+    a = i + 1;
+    for (; j < snowObs.length && snowObs[j][1] === i; j++) { const s = st[snowObs[j][0]]; err += (s.swe + s.wc - snowObs[j][2]) ** 2; }
+  }
+  return 1 - err / snowVar;
+}
 function objAmmer(p) {
   const { q } = simZone(p, F.ammer, 0, CAL_END);
   const sim = q.map((x) => mmh2cms(x, ZONE_AREAS.ammer)).subarray(WARM);
   const obs = obsW.subarray(WARM, CAL_END);
-  return 0.5 * nse(sim, obs) + 0.5 * nse(sim, obs, Math.sqrt);
+  const flow = 0.5 * nse(sim, obs) + 0.5 * nse(sim, obs, Math.sqrt);
+  return SNOW_W > 0 && snowObs.length ? (1 - SNOW_W) * flow + SNOW_W * snowNse(p) : flow;
 }
+log(`Schneebeobachtungen für die Kalibrierung: ${snowObs.length} (Gewicht ${SNOW_W})`);
 log("Kalibriere Ammer (Weilheim) …");
 const calA = OLD ? { best: OLD.ammer, score: OLD_SKILL?.scores?.ammer ?? objAmmer(OLD.ammer) } : optimize(ZONE_PARAMS, objAmmer, { gens: QUICK ? 10 : GENS, seed: 1, log: (g, b) => g % 10 === 9 && log(`  Gen ${g + 1}: ${b.toFixed(4)}`) });
 const PA = calA.best;
-log("Ammer kalibriert, Ziel", calA.score.toFixed(4));
+log("Ammer kalibriert, Ziel", calA.score.toFixed(4), "· Schnee-NSE", snowNse(PA).toFixed(3), `· TT ${PA.TT.toFixed(2)} CFMAX ${PA.CFMAX.toFixed(2)} SFCF ${PA.SFCF.toFixed(2)} PCORR ${PA.PCORR.toFixed(2)}`);
 
 // ---------------------------------------------------------------- D) Seitliche Seezuflüsse + Fließzeit Weilheim->See
 const SNOW = ["TT", "CFMAX", "SFCF"];
@@ -266,6 +295,6 @@ log("Simulation Validierung", sim);
 
 fs.mkdirSync(MODEL_DIR, { recursive: true });
 const round = (o) => JSON.parse(JSON.stringify(o, (k, v) => (typeof v === "number" ? +v.toPrecision(6) : v)));
-fs.writeFileSync(path.join(MODEL_DIR, "params.json"), JSON.stringify(round({ calibrated: new Date().toISOString(), calPeriod: [new Date(t0 + WARM * HOUR).toISOString().slice(0, 10), new Date(t0 + CAL_END * HOUR).toISOString().slice(0, 10)], ...P }), null, 1));
-fs.writeFileSync(path.join(MODEL_DIR, "skill.json"), JSON.stringify({ valPeriod: [new Date(t0 + VFROM * HOUR).toISOString().slice(0, 10), new Date(t0 + VTO * HOUR).toISOString().slice(0, 10)], issues: issues.length, scores: { ammer: calA.score, stegen_nse: calS.score, zwischengebiet_nse: calR.score, ...sim }, skill, errQuantiles: { q: QS, leads: LEADS, values: LEADS.map((L) => errQ[L]) } }, null, 1));
-log("gespeichert:", path.join(MODEL_DIR, "params.json"));
+fs.writeFileSync(path.join(MODEL_DIR, OUT_P), JSON.stringify(round({ calibrated: new Date().toISOString(), calPeriod: [new Date(t0 + WARM * HOUR).toISOString().slice(0, 10), new Date(t0 + CAL_END * HOUR).toISOString().slice(0, 10)], ...P, snowWeight: SNOW_W }), null, 1));
+fs.writeFileSync(path.join(MODEL_DIR, OUT_S), JSON.stringify({ valPeriod: [new Date(t0 + VFROM * HOUR).toISOString().slice(0, 10), new Date(t0 + VTO * HOUR).toISOString().slice(0, 10)], issues: issues.length, scores: { ammer: calA.score, stegen_nse: calS.score, zwischengebiet_nse: calR.score, ...sim }, skill, errQuantiles: { q: QS, leads: LEADS, values: LEADS.map((L) => errQ[L]) } }, null, 1));
+log("gespeichert:", path.join(MODEL_DIR, OUT_P));

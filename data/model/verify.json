@@ -1,0 +1,175 @@
+{
+ "generated": "2026-11-19T13:22:09.319Z",
+ "period": [
+  "2024-02-18",
+  "2026-11-05"
+ ],
+ "split": "2025-09-01",
+ "issues": 992,
+ "table": [
+  {
+   "lead_h": 6,
+   "n": 992,
+   "mae_w": 0.9,
+   "mae_w_before": 0.9,
+   "mae_w_pers": 1.1,
+   "mape_q": 1.6,
+   "mape_q_pers": 1.9,
+   "cover80_test": 0.715
+  },
+  {
+   "lead_h": 12,
+   "n": 992,
+   "mae_w": 1.4,
+   "mae_w_before": 1.4,
+   "mae_w_pers": 1.9,
+   "mape_q": 2.5,
+   "mape_q_pers": 3.2,
+   "cover80_test": 0.752
+  },
+  {
+   "lead_h": 24,
+   "n": 992,
+   "mae_w": 1.8,
+   "mae_w_before": 1.9,
+   "mae_w_pers": 2.9,
+   "mape_q": 3.3,
+   "mape_q_pers": 4.8,
+   "cover80_test": 0.724
+  },
+  {
+   "lead_h": 48,
+   "n": 992,
+   "mae_w": 2.9,
+   "mae_w_before": 3.1,
+   "mae_w_pers": 4.9,
+   "mape_q": 5.4,
+   "mape_q_pers": 8.1,
+   "cover80_test": 0.745
+  },
+  {
+   "lead_h": 72,
+   "n": 992,
+   "mae_w": 3.8,
+   "mae_w_before": 4.2,
+   "mae_w_pers": 6.7,
+   "mape_q": 7,
+   "mape_q_pers": 11,
+   "cover80_test": 0.756
+  },
+  {
+   "lead_h": 120,
+   "n": 992,
+   "mae_w": 5.5,
+   "mae_w_before": 6,
+   "mae_w_pers": 9.9,
+   "mape_q": 10.3,
+   "mape_q_pers": 16.2,
+   "cover80_test": 0.722
+  },
+  {
+   "lead_h": 168,
+   "n": 992,
+   "mae_w": 7.2,
+   "mae_w_before": 7.8,
+   "mae_w_pers": 12.5,
+   "mape_q": 13.8,
+   "mape_q_pers": 20.3,
+   "cover80_test": 0.675
+  },
+  {
+   "lead_h": 240,
+   "n": 992,
+   "mae_w": 9.5,
+   "mae_w_before": 9.9,
+   "mae_w_pers": 15.6,
+   "mape_q": 18.2,
+   "mape_q_pers": 25.2,
+   "cover80_test": 0.626
+  },
+  {
+   "lead_h": 336,
+   "n": 992,
+   "mae_w": 12.8,
+   "mae_w_before": 13.3,
+   "mae_w_pers": 18.4,
+   "mape_q": 24.7,
+   "mape_q_pers": 30,
+   "cover80_test": 0.599
+  }
+ ],
+ "halves": {
+  "before": [
+   5.8,
+   4.85
+  ],
+  "after": [
+   5.47,
+   4.59
+  ],
+  "persistence": [
+   9.89,
+   6.04
+  ]
+ },
+ "params": "params.json",
+ "snowVariants": [
+  {
+   "name": "aus",
+   "pw": 4.36,
+   "pwWeilheim": 0.146,
+   "rfSpring": 4.77
+  },
+  {
+   "name": "einmalig α=0.5",
+   "pw": 4.38,
+   "pwWeilheim": 0.147,
+   "rfSpring": 4.79
+  },
+  {
+   "name": "einmalig α=1",
+   "pw": 4.43,
+   "pwWeilheim": 0.1491,
+   "rfSpring": 4.83
+  },
+  {
+   "name": "täglich α=0.1",
+   "pw": 4.58,
+   "pwWeilheim": 0.1574,
+   "rfSpring": 4.92
+  },
+  {
+   "name": "täglich α=0.25",
+   "pw": 4.82,
+   "pwWeilheim": 0.1685,
+   "rfSpring": 5.32
+  },
+  {
+   "name": "täglich α=0.5",
+   "pw": 4.99,
+   "pwWeilheim": 0.1773,
+   "rfSpring": 5.54
+  },
+  {
+   "name": "täglich α=0.25, Dichte −20 %",
+   "pw": 4.72,
+   "pwWeilheim": 0.1645,
+   "rfSpring": 5.13
+  },
+  {
+   "name": "täglich α=0.25, Dichte +25 %",
+   "pw": 4.89,
+   "pwWeilheim": 0.1715,
+   "rfSpring": 5.45
+  }
+ ],
+ "chosen": {
+  "snow": "aus",
+  "wIcon": 0.5405405405405406,
+  "fS": 0.9,
+  "fM": 1,
+  "TA": 192,
+  "TG": 384
+ },
+ "baseline": "Parameter ohne Schnee-Kalibrierung, Standardeinstellungen"
+}

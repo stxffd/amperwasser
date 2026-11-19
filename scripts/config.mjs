@@ -60,6 +60,30 @@ export const ENS_POINTS = [
 ];
 export const ENS_MAP = { graswang: 0, oberammergau: 0, trauchberg: 0, rottenbuch: 1, peissenberg: 1, weilheim: 2, raisting: 2, ammersee: 3, windach: 4 };
 
+// Archivierte Vorhersagen (Open-Meteo Previous Runs API, ab Feb. 2024): Modell -> max. Vorlauftag
+export const REFORECAST_MODELS = { ecmwf_ifs025: 7, icon_seamless: 6 };
+export const REFORECAST_FROM = "2024-02-10";
+
+// DWD-Niederschlagsstationen mit täglicher Schneehöhe (opendata.dwd.de, more_precip), pt = Wetterpunkt, den sie korrigieren
+export const SNOW_STATIONS = [
+  { id: "06214", name: "Ettal-Graswang", elev: 867, pt: "graswang" },
+  { id: "01313", name: "Ettal-Linderhof", elev: 938, pt: "graswang" },
+  { id: "03677", name: "Oberammergau", elev: 832, pt: "oberammergau" },
+  { id: "01950", name: "Halblech-Trauchgau", elev: 780, pt: "trauchberg" },
+  { id: "00318", name: "Bayersoien", elev: 811, pt: "rottenbuch" },
+  { id: "02708", name: "Bad Kohlgrub", elev: 742, pt: "rottenbuch" },
+  { id: "02290", name: "Hohenpeißenberg", elev: 977, pt: "peissenberg" },
+  { id: "07103", name: "Wessobrunn", elev: 755, pt: "peissenberg" },
+  { id: "01094", name: "Eberfing", elev: 611, pt: "weilheim" },
+  { id: "05538", name: "Wielenbach", elev: 551, pt: "weilheim" },
+  { id: "06341", name: "Dießen-Dettenschwang", elev: 658, pt: "raisting" },
+  { id: "00160", name: "Andechs-Erling", elev: 682, pt: "ammersee" },
+  { id: "05187", name: "Utting", elev: 591, pt: "ammersee" },
+  { id: "14350", name: "Finning", elev: 627, pt: "windach" },
+];
+
+export const SITE_URL = "https://stxffd.github.io/amperwasser/";
+
 // Flächen (km²) laut HND-Stammdaten bzw. Differenzen
 export const AREAS = {
   weilheim: 608.0, // Ammer bis Pegel Weilheim

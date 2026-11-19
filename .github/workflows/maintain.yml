@@ -1,7 +1,7 @@
 name: Historie nachführen & Modell kalibrieren
 
-# Monatlich: Messwerte und Wetterarchiv der letzten Wochen in die Historie übernehmen,
-# Modell neu kalibrieren und alles committen. Der Commit hält außerdem die Zeitpläne aktiv
+# Monatlich: Messwerte, Wetterarchiv, Schneehöhen und archivierte Vorhersagen der letzten Wochen in die
+# Historie übernehmen, Modell neu kalibrieren, Prognose-Varianten mit Reforecasts prüfen und alles committen. Der Commit hält außerdem die Zeitpläne aktiv
 # (GitHub pausiert geplante Workflows nach 60 Tagen ohne Repo-Aktivität).
 on:
   schedule:
@@ -32,9 +32,23 @@ jobs:
         run: node scripts/fetch-history.mjs meteo-recent --days 62
       - name: Tageswerte Grafrath
         run: node scripts/fetch-history.mjs daily
+      - name: Schneehöhen (DWD)
+        run: node scripts/fetch-history.mjs snow
+      - name: Archivierte Wettervorhersagen der letzten 62 Tage
+        run: node scripts/fetch-history.mjs reforecast --days 62 --pause 5
+      - name: Sicherung des Prognosearchivs
+        run: |
+          mkdir -p data/archive
+          if curl -sf https://stxffd.github.io/amperwasser/data/archive.json -o /tmp/archive.json \
+             && node -e "const a=require('/tmp/archive.json'); if(!Array.isArray(a.items)) process.exit(1)"; then
+            cp /tmp/archive.json data/archive/forecasts.json
+          fi
       - name: Kalibrierung
         if: github.event_name == 'schedule' || inputs.calibrate
         run: node --max-old-space-size=6144 scripts/calibrate.mjs
+      - name: Prognoseprüfung und Variantenwahl (Reforecasts)
+        if: github.event_name == 'schedule' || inputs.calibrate
+        run: node --max-old-space-size=6144 scripts/verify.mjs
       - name: Commit
         run: |
           git config user.name "github-actions[bot]"

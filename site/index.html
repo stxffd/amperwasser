@@ -56,6 +56,14 @@
           <button data-range="365" aria-pressed="false">1 Jahr</button>
           <button data-range="all" aria-pressed="false">Seit 1964</button>
         </div>
+        <label class="cmp" id="cmp-wrap" hidden>Vergleich
+          <select id="cmp">
+            <option value="0">keiner</option>
+            <option value="1">Prognose von gestern</option>
+            <option value="3">Prognose von vor 3 Tagen</option>
+            <option value="7">Prognose von vor 7 Tagen</option>
+          </select>
+        </label>
       </div>
       <div class="legend" id="legend"></div>
       <div class="chart" id="chart-main"></div>
@@ -77,6 +85,18 @@
       <p class="hint">Spanne: 80 % der Ensemble-Szenarien inkl. Modellfehler liegen in diesem Bereich. Werte als Tagesmittel.</p>
     </section>
 
+    <section class="panel" aria-labelledby="t-check" id="check" hidden>
+      <h2 id="t-check">Wie genau ist die Prognose?</h2>
+      <p class="hint" id="check-intro"></p>
+      <div class="table-scroll">
+        <table class="data" id="check-table">
+          <thead><tr><th>Vorhersage für</th><th class="num">Abweichung Prognose</th><th class="num">„Bleibt wie jetzt“</th><th class="num" id="check-live-h">Live-Prognosen</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="hint" id="check-note"></p>
+    </section>
+
     <section class="panel" aria-labelledby="t-up">
       <h2 id="t-up">Oberlauf &amp; Ammersee</h2>
       <p class="hint">Grafrath liegt 6 km unterhalb des Ammersee-Ausflusses. Der See dämpft Hochwasser der Ammer stark und verzögert sie um Tage.</p>
@@ -92,11 +112,13 @@
       <summary><h2>Methode, Prognosegüte &amp; Datenquellen</h2></summary>
       <div id="about-body">
         <p><strong>Modell.</strong> Ein Niederschlag-Abfluss-Modell (HBV-Ansatz mit Schneeschmelze nach Höhenlage) berechnet den Zufluss der Ammer bis Weilheim und die übrigen Seezuflüsse. Eine Wasserbilanz des Ammersees mit gemessener Ausfluss-Kennlinie liefert den Abfluss bei Stegen; dazu kommen Windach und Ampermoos bis Grafrath. Jede Prognose startet an den aktuellen Messwerten (Seepegel, Ammer, Amper) und korrigiert Modellabweichungen.</p>
-        <p><strong>Unsicherheit.</strong> Das Modell wird mit allen Mitgliedern der Wetter-Ensembles <span id="about-models">ICON-D2-EPS, ICON-EU-EPS und ECMWF-ENS</span> gerechnet. Zusätzlich fließt die in Rückrechnungen gemessene Modellungenauigkeit ein.</p>
-        <p><strong>Prognosegüte</strong> (Rückrechnungen <span id="skill-period"></span> mit gemessenem Wetter, mittlere Abweichung):</p>
+        <p><strong>Schnee.</strong> Die Schneedecke wird je Höhenlage mitgerechnet. Die Schneeparameter sind so kalibriert, dass das Modell die gemessenen Schneehöhen von 10 DWD-Stationen im Ammergebirge seit 1999 nachbildet; das verbessert die Prognosen zur Schneeschmelze im Frühjahr. Ein zusätzlicher täglicher Abgleich mit den aktuellen Messungen wurde getestet, machte die Prognosen aber nicht genauer (<span id="about-snow">–</span>).</p>
+        <p><strong>Unsicherheit.</strong> Das Modell wird mit allen Mitgliedern der Wetter-Ensembles <span id="about-models">ICON-D2-EPS, ICON-EU-EPS und ECMWF-ENS</span> gerechnet. Die Spanne kombiniert diese Szenarien mit den Abweichungen, die in den Rückrechnungen mit echten Wettervorhersagen tatsächlich aufgetreten sind.</p>
+        <p><strong>Optimierung.</strong> Gewichtung der Wettermodelle, Niederschlagsfaktoren, Schnee-Abgleich und Fehlerkorrektur wurden in Rückrechnungen mit den damals vorliegenden Wettervorhersagen getestet; verwendet wird die genaueste Variante (<span id="about-chosen">–</span>).</p>
+        <p><strong>Reiner Modellfehler</strong> (Rückrechnungen <span id="skill-period"></span> mit gemessenem statt vorhergesagtem Wetter, mittlere Abweichung des Abflusses):</p>
         <div class="table-scroll"><table class="data" id="skill-table"><thead><tr><th>Vorlauf</th><th class="num">Modell</th><th class="num">Persistenz*</th></tr></thead><tbody></tbody></table></div>
-        <p class="hint">* „Es bleibt wie jetzt“ als Vergleich. Mit echter Wettervorhersage sind die Fehler größer, das deckt die Spanne ab.</p>
-        <p><strong>Daten.</strong> Pegeldaten: <a href="https://www.gkd.bayern.de" rel="noopener">Gewässerkundlicher Dienst Bayern</a> / <a href="https://www.hnd.bayern.de" rel="noopener">Hochwassernachrichtendienst Bayern</a>, Bayerisches Landesamt für Umwelt, CC BY 4.0. Wetter: <a href="https://open-meteo.com" rel="noopener">Open-Meteo</a> (DWD ICON, ECMWF, ERA5/Copernicus), CC BY 4.0. Rohdaten sind ungeprüft.</p>
+        <p class="hint">* „Es bleibt wie jetzt“ als Vergleich.</p>
+        <p><strong>Daten.</strong> Pegeldaten: <a href="https://www.gkd.bayern.de" rel="noopener">Gewässerkundlicher Dienst Bayern</a> / <a href="https://www.hnd.bayern.de" rel="noopener">Hochwassernachrichtendienst Bayern</a>, Bayerisches Landesamt für Umwelt, CC BY 4.0. Wetter: <a href="https://open-meteo.com" rel="noopener">Open-Meteo</a> (DWD ICON, ECMWF, ERA5/Copernicus), CC BY 4.0. Schneehöhen: <a href="https://opendata.dwd.de" rel="noopener">Deutscher Wetterdienst</a>, CC BY 4.0. Rohdaten sind ungeprüft.</p>
         <p><strong>Keine amtliche Warnung.</strong> Bei Hochwasser gelten ausschließlich die Meldungen des <a href="https://www.hnd.bayern.de" rel="noopener">Hochwassernachrichtendienstes</a>.</p>
       </div>
     </details>
